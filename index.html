@@ -3,49 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>⚡ Instant Offline Data Extractor</title>
+    <title>⚡ Precision Client-Side Extractor</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 min-h-screen p-6 font-sans">
 
-    <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-6">
+    <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-6">
         
         <div class="bg-gray-800 p-5 rounded-xl shadow-lg h-fit col-span-1 border border-gray-700">
-            <h2 class="text-xl font-bold mb-4 text-emerald-400">⚙️ Settings</h2>
-            <label class="block text-sm font-medium mb-2 text-gray-300">Target Terms (one per line):</label>
-            <textarea id="keywords" class="w-full h-40 bg-gray-900 border border-gray-600 rounded p-2 text-sm text-white focus:outline-none focus:border-emerald-500" placeholder="Sample Size&#10;Design&#10;Country">Sample Size&#10;Design&#10;Country</textarea>
+            <h2 class="text-xl font-bold mb-4 text-emerald-400">⚙️ Extraction Targets</h2>
+            <p class="text-xs text-gray-400 mb-3">Enter parameters exactly as they appear in the text (one per line):</p>
+            <textarea id="keywords" class="w-full h-64 bg-gray-900 border border-gray-600 rounded p-2 text-sm text-white font-mono focus:outline-none focus:border-emerald-500" placeholder="PPV&#10;NPV&#10;TP">PPV&#10;NPV&#10;TP&#10;TN&#10;FN&#10;Sample Size</textarea>
         </div>
 
         <div class="col-span-3 space-y-6">
             <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
-                <h1 class="text-3xl font-extrabold text-white mb-1">🔬 100% Offline Data Extractor</h1>
-                <p class="text-gray-400 text-sm mb-6">Runs completely in your browser tab. Zero server costs, zero data tracking, and zero API limits.</p>
+                <h1 class="text-3xl font-extrabold text-white mb-1">🔬 Precision Data Matrix Extractor</h1>
+                <p class="text-gray-400 text-sm mb-6">Local Client-Side Parser — Rules-optimized for statistical parameters.</p>
 
                 <div class="border-2 border-dashed border-gray-600 rounded-xl p-8 text-center cursor-pointer hover:border-emerald-500 transition-colors bg-gray-950" id="dropzone">
                     <input type="file" id="fileInput" multiple accept=".pdf" class="hidden">
-                    <p class="text-lg text-gray-300">Drag & drop your PDF papers here, or <span class="text-emerald-400 font-semibold underline">browse files</span></p>
-                    <p class="text-xs text-gray-500 mt-2">Supports multiple medical journal PDFs simultaneously</p>
+                    <p class="text-lg text-gray-300">Drag & drop your research PDFs here, or <span class="text-emerald-400 font-semibold underline">browse files</span></p>
                 </div>
                 
-                <div id="status" class="mt-4 text-sm text-emerald-400 font-medium hidden">⏳ Processing documents locally...</div>
+                <div id="status" class="mt-4 text-sm text-emerald-400 font-medium hidden">⏳ Deep scanning document layouts...</div>
             </div>
 
             <div id="resultsPanel" class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 hidden">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-xl font-bold text-white">📊 Extracted Matrix</h3>
+                    <h3 class="text-xl font-bold text-white"> 📑 Filtered Extraction Matrix</h3>
                     <button id="downloadBtn" class="bg-emerald-500 hover:bg-emerald-600 text-gray-900 font-bold px-4 py-2 rounded shadow transition-colors text-sm">
-                        📥 Save Matrix Data as CSV
+                        📥 Export Clean CSV
                     </button>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse text-sm text-gray-300">
                         <thead>
-                            <tr class="border-b border-gray-700 bg-gray-950 text-gray-400" id="tableHeader">
-                                </tr>
+                            <tr class="border-b border-gray-700 bg-gray-950 text-gray-400" id="tableHeader"></tr>
                         </thead>
-                        <tbody id="tableBody" class="divide-y divide-gray-700">
-                            </tbody>
+                        <tbody id="tableBody" class="divide-y divide-gray-700"></tbody>
                     </table>
                 </div>
             </div>
@@ -54,7 +51,6 @@
     </div>
 
     <script>
-        // Set up the PDF worker path
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
 
         const fileInput = document.getElementById('fileInput');
@@ -92,18 +88,34 @@
                         fullText += textContent.items.map(item => item.str).join(' ') + '\n';
                     }
 
+                    // Clean white spaces to make multi-column table rows linear
+                    fullText = fullText.replace(/\s+/g, ' ');
+
                     let rowData = { "File Name": file.name };
                     
                     keywords.forEach(kw => {
-                        const regex = new RegExp(`([^.]+?${kw}[^.]+?)(?:\\.|$)`, 'i');
+                        // Advanced regex sequence built to capture values matching common data reporting patterns:
+                        // Captures metrics like: TP = 45, TN (92%), Sample Size: 120, PPV of 88.4%
+                        const regex = new RegExp(`\\b${kw}\\b\\s*(?:=|=|:|is|of)?\\s*([\\d\\.\\%\\±\\-\\–\\(\\)]+|\\b\\d+\\b|\\s*\\d+\\s*)`, 'i');
                         const match = fullText.match(regex);
-                        rowData[kw] = match ? match[1].trim().substring(0, 150) : "Not discovered";
+                        
+                        if (match && match[1] && match[1].trim().length > 0) {
+                            let cleanValue = match[1].trim();
+                            // If it matches punctuation symbols alone, mark as not found
+                            if(/^[^A-Za-z0-9]+$/.test(cleanValue)) {
+                                rowData[kw] = "Value unaligned";
+                            } else {
+                                rowData[kw] = cleanValue;
+                            }
+                        } else {
+                            rowData[kw] = "Not discovered";
+                        }
                     });
 
                     extractedData.push(rowData);
                 } catch (err) {
                     let errRow = { "File Name": file.name };
-                    keywords.forEach(kw => errRow[kw] = "Error parsing file");
+                    keywords.forEach(kw => errRow[kw] = "Read Error");
                     extractedData.push(errRow);
                 }
             }
@@ -117,8 +129,8 @@
             
             tableBody.innerHTML = extractedData.map(row => {
                 return `<tr class="hover:bg-gray-700/50">
-                    <td class="p-3 font-medium text-white max-w-xs truncate">${row["File Name"]}</td>
-                    ${keywords.map(kw => `<td class="p-3 text-gray-400">${row[kw]}</td>`).join('')}
+                    <td class="p-3 font-medium text-emerald-400 max-w-xs truncate" title="${row["File Name"]}">${row["File Name"]}</td>
+                    ${keywords.map(kw => `<td class="p-3 text-gray-100 font-mono">${row[kw]}</td>`).join('')}
                 </tr>`;
             }).join('');
 
@@ -137,7 +149,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'local_extraction_matrix.csv';
+            a.download = 'precision_extracted_data.csv';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
