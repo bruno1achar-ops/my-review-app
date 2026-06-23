@@ -7,7 +7,11 @@ from pypdf import PdfReader
 import io
 import time
 import re
+import streamlit as st
+import os
 
+# This forces the app to use the secret key, even if other code is looking for it elsewhere
+os.environ["GEMINI_API_KEY"] = st.secrets["GEMINI_API_KEY"]
 # =========================================================================
 # 1. INITIALIZATION & WORKSPACE CONFIGURATION
 # =========================================================================
