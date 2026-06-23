@@ -1,73 +1,147 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-    <title>Serverless Data Extractor</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.39.0/build/stlite.css" />
-  </head>
-  <body>
-    <div id="root"></div>
-    <script src="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.39.0/build/mountable.js"></script>
-    <script>
-      stlite.mount(
-        {
-          requirements: ["pandas", "pypdf"],
-          entrypoint: "app.py",
-          files: {
-            "app.py": `
-import streamlit as st
-import pandas as pd
-from pypdf import PdfReader
-import io
-import re
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚡ Instant Offline Data Extractor</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen p-6 font-sans">
 
-st.set_page_config(page_title="Local Review Assistant", layout="wide")
-st.title("🔬 100% Offline Data Extractor")
-st.caption("⚡ Completely serverless — runs entirely in your local browser engine with no API limits")
+    <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-6">
+        
+        <div class="bg-gray-800 p-5 rounded-xl shadow-lg h-fit col-span-1 border border-gray-700">
+            <h2 class="text-xl font-bold mb-4 text-emerald-400">⚙️ Settings</h2>
+            <label class="block text-sm font-medium mb-2 text-gray-300">Target Terms (one per line):</label>
+            <textarea id="keywords" class="w-full h-40 bg-gray-900 border border-gray-600 rounded p-2 text-sm text-white focus:outline-none focus:border-emerald-500" placeholder="Sample Size&#10;Design&#10;Country">Sample Size&#10;Design&#10;Country</textarea>
+        </div>
 
-st.sidebar.header("⚙️ Local Extraction Rule Settings")
-keywords_raw = st.sidebar.text_area("Target Extraction Terms (one per line):", "Sample Size\\nDesign\\nCountry")
-target_keywords = [k.strip() for k in keywords_raw.split("\\n") if k.strip()]
+        <div class="col-span-3 space-y-6">
+            <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
+                <h1 class="text-3xl font-extrabold text-white mb-1">🔬 100% Offline Data Extractor</h1>
+                <p class="text-gray-400 text-sm mb-6">Runs completely in your browser tab. Zero server costs, zero data tracking, and zero API limits.</p>
 
-uploaded_files = st.file_uploader("Upload PDF Papers", type=["pdf"], accept_multiple_files=True)
-
-if uploaded_files:
-    matrix_data = []
-    with st.spinner("Processing files locally..."):
-        for f in uploaded_files:
-            try:
-                pdf_bytes = f.read()
-                reader = PdfReader(io.BytesIO(pdf_bytes))
-                full_text = ""
-                for page in reader.pages:
-                    t = page.extract_text()
-                    if t: 
-                        full_text += t + "\\n"
+                <div class="border-2 border-dashed border-gray-600 rounded-xl p-8 text-center cursor-pointer hover:border-emerald-500 transition-colors bg-gray-950" id="dropzone">
+                    <input type="file" id="fileInput" multiple accept=".pdf" class="hidden">
+                    <p class="text-lg text-gray-300">Drag & drop your PDF papers here, or <span class="text-emerald-400 font-semibold underline">browse files</span></p>
+                    <p class="text-xs text-gray-500 mt-2">Supports multiple medical journal PDFs simultaneously</p>
+                </div>
                 
-                entry = {"File Name": f.name}
-                for kw in target_keywords:
-                    pattern = re.compile(r'([^.\\n]*?' + re.escape(kw) + r'[^.\\n]*)', re.IGNORECASE)
-                    matches = pattern.findall(full_text)
-                    if matches:
-                        entry[kw] = matches[0].strip()[:150]
-                    else:
-                        entry[kw] = "Not discovered"
-                matrix_data.append(entry)
-            except Exception as e:
-                matrix_data.append({"File Name": f.name, "Error": str(e)})
+                <div id="status" class="mt-4 text-sm text-emerald-400 font-medium hidden">⏳ Processing documents locally...</div>
+            </div>
+
+            <div id="resultsPanel" class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold text-white">📊 Extracted Matrix</h3>
+                    <button id="downloadBtn" class="bg-emerald-500 hover:bg-emerald-600 text-gray-900 font-bold px-4 py-2 rounded shadow transition-colors text-sm">
+                        📥 Save Matrix Data as CSV
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-sm text-gray-300">
+                        <thead>
+                            <tr class="border-b border-gray-700 bg-gray-950 text-gray-400" id="tableHeader">
+                                </tr>
+                        </thead>
+                        <tbody id="tableBody" class="divide-y divide-gray-700">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Set up the PDF worker path
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+        const fileInput = document.getElementById('fileInput');
+        const dropzone = document.getElementById('dropzone');
+        const status = document.getElementById('status');
+        const resultsPanel = document.getElementById('resultsPanel');
+        const tableHeader = document.getElementById('tableHeader');
+        const tableBody = document.getElementById('tableBody');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        let extractedData = [];
+
+        dropzone.addEventListener('click', () => fileInput.click());
+        fileInput.addEventListener('change', handleFiles);
+        
+        async function handleFiles(e) {
+            const files = e.target.files;
+            if (!files.length) return;
+
+            status.classList.remove('hidden');
+            resultsPanel.classList.add('hidden');
+            extractedData = [];
+
+            const keywords = document.getElementById('keywords').value.split('\n').map(k => k.trim()).filter(k => k);
+
+            for (let file of files) {
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    let fullText = '';
+
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const textContent = await page.getTextContent();
+                        fullText += textContent.items.map(item => item.str).join(' ') + '\n';
+                    }
+
+                    let rowData = { "File Name": file.name };
+                    
+                    keywords.forEach(kw => {
+                        const regex = new RegExp(`([^.]+?${kw}[^.]+?)(?:\\.|$)`, 'i');
+                        const match = fullText.match(regex);
+                        rowData[kw] = match ? match[1].trim().substring(0, 150) : "Not discovered";
+                    });
+
+                    extractedData.push(rowData);
+                } catch (err) {
+                    let errRow = { "File Name": file.name };
+                    keywords.forEach(kw => errRow[kw] = "Error parsing file");
+                    extractedData.push(errRow);
+                }
+            }
+
+            renderTable(keywords);
+            status.classList.add('hidden');
+        }
+
+        function renderTable(keywords) {
+            tableHeader.innerHTML = `<th class="p-3">File Name</th>` + keywords.map(kw => `<th class="p-3">${kw}</th>`).join('');
             
-    if matrix_data:
-        df_matrix = pd.DataFrame(matrix_data)
-        st.subheader("📊 Locally Processed Extraction Grid")
-        st.dataframe(df_matrix)
-        csv_bytes = df_matrix.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Save Matrix Data as CSV", data=csv_bytes, file_name="local_extraction_output.csv", mime="text/csv")
-`
-          }
-        },
-        document.getElementById("root")
-      );
+            tableBody.innerHTML = extractedData.map(row => {
+                return `<tr class="hover:bg-gray-700/50">
+                    <td class="p-3 font-medium text-white max-w-xs truncate">${row["File Name"]}</td>
+                    ${keywords.map(kw => `<td class="p-3 text-gray-400">${row[kw]}</td>`).join('')}
+                </tr>`;
+            }).join('');
+
+            resultsPanel.classList.remove('hidden');
+        }
+
+        downloadBtn.addEventListener('click', () => {
+            if (!extractedData.length) return;
+            const headers = Object.keys(extractedData[0]);
+            const csvRows = [
+                headers.join(','),
+                ...extractedData.map(row => headers.map(header => `"${(row[header] || '').replace(/"/g, '""')}"`).join(','))
+            ];
+            
+            const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'local_extraction_matrix.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        });
     </script>
-  </body>
+</body>
 </html>
