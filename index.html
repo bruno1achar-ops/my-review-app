@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Serverless Data Extractor</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.39.0/build/stlite.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.39.0/build/mountable.js"></script>
+    <script>
+      stlite.mount(
+        {
+          requirements: ["pandas", "pypdf"], // Automatically installs libraries locally in the browser
+          entrypoint: "app.py",
+          files: {
+            "app.py": `
+import streamlit as st
+import pandas as pd
+from pypdf import PdfReader
+import io
+import re
+
+st.set_page_config(page_title="Local Review Assistant", layout="wide")
+
+st.title("🔬 100% Offline Data Extractor")
+st.caption("⚡ Completely serverless — runs entirely in your local browser engine with no API limits")
+
+# Sidebar for local settings
+st.sidebar.header("⚙️ Local Extraction Rule Settings")
+keywords_raw = st.sidebar.text_area("Target Extraction Terms (one per line):", "Sample Size\\nDesign\\nCountry")
+target_keywords = [k.strip() for k in keywords_raw.split("\\n") if k.strip()]
+
+uploaded_files = st.file_uploader("Upload PDF Papers", type=["pdf"], accept_multiple_files=True)
+
+if uploaded_files:
+    matrix_data = []
+    
+    with st.spinner("Processing files locally..."):
+        for f in uploaded_files:
+            # Parse the PDF entirely on the user's processor
+            pdf_bytes = f.read()
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            
+            # Combine text fields safely
+            full_text = ""
+            for page in reader.pages:
+                t = page.extract_text()
+                if t:
+                    full_text += t + "\\n"
+            
+            # Form a basic data entry row dynamically
+            entry = {"File Name": f.name}
+            
+            # Run local rule-based text mining patterns for matching terms
+            for kw in target_keywords:
+                # Find sentences containing our target words
+                pattern = re.compile(r'([^.\\n]*?' + re.escape(kw) + r'[^.\\n]*)', re.IGNORECASE)
+                matches = pattern.findall(full_text)
+                
+                if matches:
+                    # Clean and take the first clear match found in the text context
+                    entry[kw] = matches[0].strip()[:150]
+                else:
+                    entry[kw] = "Not discovered in text matches"
+                    
+            matrix_data.append(entry)
+            
+    # Present the clean local table layout cleanly
+    df_matrix = pd.DataFrame(matrix_data)
+    st.subheader("📊 Locally Processed Extraction Grid")
+    st.dataframe(df_matrix)
+    
+    # Let user instantly download their results file locally
+    csv_bytes = df_matrix.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Save Matrix Data as CSV", data=csv_bytes, file_name="local_extraction_output.csv", mime="text/csv")
+`
+          }
+        },
+        document.getElementById("root")
+      );
+    </script>
+  </body>
+</html>
